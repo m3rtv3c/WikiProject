@@ -47,9 +47,8 @@ def get_user_with_roles(login, password):
         "roles": []
     }
 
-    for row in rows:
-        if row[4]:
-            user["roles"].append(row[4])
+    # собираем роли
+    user["roles"] = list({row[4] for row in rows if row[4]})
 
     return user
 
@@ -112,6 +111,29 @@ def get_article_by_id(article_id):
         FROM article
         WHERE id=%s AND status='published'
     """, (article_id,))
+
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return None
+
+    return {
+        "id": row[0],
+        "title": row[1],
+        "content": row[2],
+        "views": row[3]
+    }
+
+def get_article_by_title(title):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT id,title,content,views
+        FROM article
+        WHERE title=%s AND status='published'
+    """, (title,))
 
     row = cursor.fetchone()
     conn.close()
