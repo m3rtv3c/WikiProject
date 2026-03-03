@@ -100,6 +100,76 @@ ALTER SEQUENCE public.article_id_seq OWNED BY public.article.id;
 
 
 --
+-- Name: article_image; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.article_image (
+    id integer NOT NULL,
+    id_article integer,
+    id_image integer
+);
+
+
+ALTER TABLE public.article_image OWNER TO postgres;
+
+--
+-- Name: article_image_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.article_image_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.article_image_id_seq OWNER TO postgres;
+
+--
+-- Name: article_image_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.article_image_id_seq OWNED BY public.article_image.id;
+
+
+--
+-- Name: image; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.image (
+    id integer NOT NULL,
+    image_name bytea,
+    description character varying
+);
+
+
+ALTER TABLE public.image OWNER TO postgres;
+
+--
+-- Name: image_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.image_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.image_id_seq OWNER TO postgres;
+
+--
+-- Name: image_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.image_id_seq OWNED BY public.image.id;
+
+
+--
 -- Name: role; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -222,6 +292,20 @@ ALTER TABLE ONLY public.article_history ALTER COLUMN id SET DEFAULT nextval('pub
 
 
 --
+-- Name: article_image id; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.article_image ALTER COLUMN id SET DEFAULT nextval('public.article_image_id_seq'::regclass);
+
+
+--
+-- Name: image id; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.image ALTER COLUMN id SET DEFAULT nextval('public.image_id_seq'::regclass);
+
+
+--
 -- Name: role id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -248,6 +332,7 @@ ALTER TABLE ONLY public.users ALTER COLUMN id SET DEFAULT nextval('public.users_
 
 COPY public.article (id, title, content, created_at, status, views, id_user) FROM stdin;
 2	Насекомые	Жужат и кусаются, а иногда очень даже прикольные	2026-02-26 00:00:00	published	1	1
+3	Жесткий гейм	<h2>Главный герой</h2>\n\n<img src="images/jensen.png" width="300">\n\n<p>Адам Дженсен — главный герой...</p>	2026-03-26 00:00:00	published	2	1
 \.
 
 
@@ -260,10 +345,29 @@ COPY public.article_history (id, title, content, updated_at, status, views, id_a
 
 
 --
+-- Data for Name: article_image; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.article_image (id, id_article, id_image) FROM stdin;
+\.
+
+
+--
+-- Data for Name: image; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.image (id, image_name, description) FROM stdin;
+\.
+
+
+--
 -- Data for Name: role; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 COPY public.role (id, name, description) FROM stdin;
+1	admin	admin of everything
+2	editor	edit stuff
+3	user	plan user
 \.
 
 
@@ -272,6 +376,8 @@ COPY public.role (id, name, description) FROM stdin;
 --
 
 COPY public.user_role (id, id_user, id_role) FROM stdin;
+2	3	3
+3	1	1
 \.
 
 
@@ -281,6 +387,7 @@ COPY public.user_role (id, id_user, id_role) FROM stdin;
 
 COPY public.users (login, password, reg_date, id, email, name) FROM stdin;
 adm	123	2026-02-26 00:00:00	1	adm@gmail.com	Андрей Колбасенко
+user	1	2026-03-02 10:55:38.492634	3	nikitazamorov0@gmail.com	Nikita
 \.
 
 
@@ -295,28 +402,50 @@ SELECT pg_catalog.setval('public.article_history_id_seq', 1, false);
 -- Name: article_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.article_id_seq', 2, true);
+SELECT pg_catalog.setval('public.article_id_seq', 3, true);
+
+
+--
+-- Name: article_image_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.article_image_id_seq', 1, false);
+
+
+--
+-- Name: image_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.image_id_seq', 1, false);
 
 
 --
 -- Name: role_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.role_id_seq', 1, false);
+SELECT pg_catalog.setval('public.role_id_seq', 3, true);
 
 
 --
 -- Name: user_role_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.user_role_id_seq', 1, false);
+SELECT pg_catalog.setval('public.user_role_id_seq', 3, true);
 
 
 --
 -- Name: users_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.users_id_seq', 1, true);
+SELECT pg_catalog.setval('public.users_id_seq', 3, true);
+
+
+--
+-- Name: article_image article_image_pk; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.article_image
+    ADD CONSTRAINT article_image_pk PRIMARY KEY (id);
 
 
 --
@@ -325,6 +454,14 @@ SELECT pg_catalog.setval('public.users_id_seq', 1, true);
 
 ALTER TABLE ONLY public.article
     ADD CONSTRAINT article_pk PRIMARY KEY (id);
+
+
+--
+-- Name: image image_pk; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.image
+    ADD CONSTRAINT image_pk PRIMARY KEY (id);
 
 
 --
@@ -365,6 +502,22 @@ ALTER TABLE ONLY public.article_history
 
 ALTER TABLE ONLY public.article_history
     ADD CONSTRAINT article_history_users_fk FOREIGN KEY (id_user) REFERENCES public.users(id);
+
+
+--
+-- Name: article_image article_image_article_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.article_image
+    ADD CONSTRAINT article_image_article_fk FOREIGN KEY (id_article) REFERENCES public.article(id);
+
+
+--
+-- Name: article_image article_image_image_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.article_image
+    ADD CONSTRAINT article_image_image_fk FOREIGN KEY (id_image) REFERENCES public.image(id);
 
 
 --
