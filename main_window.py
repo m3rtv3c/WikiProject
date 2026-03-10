@@ -2,133 +2,139 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QTableWidget,
     QTableWidgetItem, QLineEdit,
-    QLabel, QTextEdit, QMessageBox, QTextBrowser
+    QLabel, QTextEdit, QMessageBox, QTextBrowser,
+    QSizePolicy, QTreeWidget, QTreeWidgetItem
 )
-from PyQt5.QtCore import QUrl
-from PyQt5.QtGui import QIcon
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon, QPixmap
 
-from db import get_articles, get_article_by_id, get_article_by_title
+from db import get_articles, get_article_by_id, get_article_images
 from auth import LoginWindow
 
 
 # ================= ARTICLE VIEW =================
-
 class ArticleWindow(QWidget):
     def __init__(self, article):
         super().__init__()
-
         self.setWindowTitle(article["title"])
-        self.resize(800, 600)
+        self.resize(900, 600)
 
-        self.browser = QTextBrowser()
-        self.browser.setOpenExternalLinks(False)
-        self.browser.anchorClicked.connect(self.handle_link)
+        # ================= MAIN LAYOUT =================
+        main_layout = QVBoxLayout()
+        top_layout = QHBoxLayout()  # Слева картинка, справа TOC
 
-        layout = QVBoxLayout()
-        layout.addWidget(self.browser)
-        self.setLayout(layout)
+        # ---------------- IMAGE ----------------
+        self.image_label = QLabel()
+        self.image_label.setAlignment(Qt.AlignCenter)
+        self.image_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.image_label.setMaximumWidth(300)
+        top_layout.addWidget(self.image_label)
 
+        # ---------------- TOC ----------------
+        self.toc_tree = QTreeWidget()
+        self.toc_tree.setHeaderLabel("Оглавление")
+        self.toc_tree.setMaximumWidth(250)
+        top_layout.addWidget(self.toc_tree)
+
+        main_layout.addLayout(top_layout)
+
+        # ---------------- ARTICLE TEXT ----------------
+        self.text_browser = QTextBrowser()
+        main_layout.addWidget(self.text_browser)
+
+        self.setLayout(main_layout)
+
+        # ================= LOAD ARTICLE =================
         self.load_article(article)
 
-    # ================= LOAD ARTICLE =================
+        # Клик по элементу TOC
+        self.toc_tree.itemClicked.connect(self.scroll_to_anchor)
 
+    # ---------------- SCROLL TO ANCHOR ----------------
+    def scroll_to_anchor(self, item, column):
+        anchor_name = item.data(0, Qt.UserRole)
+        if anchor_name:
+            self.text_browser.scrollToAnchor(anchor_name)
+
+    # ---------------- LOAD ARTICLE ----------------
     def load_article(self, article):
-        html = self.prepare_article(article)
-        self.browser.setHtml(html)
+        images = get_article_images(article["id"])
+        if images:
+            pixmap = QPixmap()
+            pixmap.loadFromData(images[0])
+            pixmap = pixmap.scaledToWidth(300, Qt.SmoothTransformation)
+            self.image_label.setPixmap(pixmap)
+        else:
+            self.image_label.setText("Нет изображения")
 
-    # ================= LINK HANDLER =================
+        content = article["content"].split("\n")
+        self.text_browser.clear()
+        self.toc_tree.clear()
 
-    def handle_link(self, url: QUrl):
-        title = url.toString()
-        article = get_article_by_title(title)
+        current_h1_item = None
+        anchor_counter = 0
+        in_list = False
 
-        if article:
-            self.setWindowTitle(article["title"])
-            self.load_article(article)
+        for line in content:
+            line = line.strip()
+            anchor_counter += 1
+            anchor_name = f"anchor_{anchor_counter}"
 
-    # ================= FORMAT ARTICLE =================
+            # H1
+            if line.startswith("# ") and not line.startswith("##"):
+                if in_list:
+                    self.text_browser.append("</ul>")
+                    in_list = False
+                title = line[2:].strip()
+                self.text_browser.append(f'<h1><a name="{anchor_name}"></a>{title}</h1>')
+                current_h1_item = QTreeWidgetItem([title])
+                current_h1_item.setData(0, Qt.UserRole, anchor_name)
+                self.toc_tree.addTopLevelItem(current_h1_item)
 
-    def prepare_article(self, article):
-        content = self.convert_wiki_links(article["content"])
-        content = self.generate_toc(content)
+            # H2
+            elif line.startswith("## "):
+                if in_list:
+                    self.text_browser.append("</ul>")
+                    in_list = False
+                title = line[3:].strip()
+                self.text_browser.append(f'<h2><a name="{anchor_name}"></a>{title}</h2>')
+                if current_h1_item:
+                    child_item = QTreeWidgetItem([title])
+                    child_item.setData(0, Qt.UserRole, anchor_name)
+                    current_h1_item.addChild(child_item)
+                else:
+                    item = QTreeWidgetItem([title])
+                    item.setData(0, Qt.UserRole, anchor_name)
+                    self.toc_tree.addTopLevelItem(item)
 
-        return f"""
-        <html>
-        <head>
-        <style>
-            body {{
-                font-family: Arial;
-                margin: 20px;
-                background-color: #f8f9fa;
-                line-height: 1.6;
-            }}
-            h1 {{
-                border-bottom: 2px solid #ccc;
-            }}
-            h2 {{
-                margin-top: 25px;
-                border-bottom: 1px solid #ddd;
-            }}
-            .toc {{
-                background: #ffffff;
-                border: 1px solid #ccc;
-                padding: 10px;
-                width: 250px;
-                margin-bottom: 20px;
-            }}
-            a {{
-                color: #0645ad;
-                text-decoration: none;
-            }}
-            a:hover {{
-                text-decoration: underline;
-            }}
-        </style>
-        </head>
-        <body>
-            <h1>{article['title']}</h1>
-            {content}
-        </body>
-        </html>
-        """
+            # Список
+            elif line.startswith("- "):
+                if not in_list:
+                    self.text_browser.append("<ul>")
+                    in_list = True
+                self.text_browser.append(f"<li>{line[2:].strip()}</li>")
 
-    # ================= WIKI LINKS [[Article]] =================
+            # Блок кода
+            elif line.startswith("```") and line.endswith("```"):
+                if in_list:
+                    self.text_browser.append("</ul>")
+                    in_list = False
+                self.text_browser.append(f"<pre>{line[3:-3]}</pre>")
 
-    def convert_wiki_links(self, text):
-        import re
+            # Обычный текст
+            else:
+                if in_list:
+                    self.text_browser.append("</ul>")
+                    in_list = False
+                if line:
+                    self.text_browser.append(f"<p>{line}</p>")
 
-        pattern = r"\[\[(.*?)\]\]"
+        if in_list:
+            self.text_browser.append("</ul>")
 
-        def replace(match):
-            title = match.group(1)
-            return f'<a href="{title}">{title}</a>'
-
-        return re.sub(pattern, replace, text)
-
-    # ================= AUTO TOC =================
-
-    def generate_toc(self, text):
-        import re
-
-        headers = re.findall(r"<h2>(.*?)</h2>", text)
-
-        if not headers:
-            return text
-
-        toc = '<div class="toc"><b>Содержание</b><ul>'
-        for h in headers:
-            anchor = h.replace(" ", "_")
-            text = text.replace(f"<h2>{h}</h2>", f'<h2 id="{anchor}">{h}</h2>')
-            toc += f'<li><a href="#{anchor}">{h}</a></li>'
-
-        toc += "</ul></div>"
-
-        return toc + text
 
 # ================= MAIN WINDOW =================
-
 class MainWindow(QWidget):
-
     def __init__(self):
         super().__init__()
 
@@ -142,13 +148,10 @@ class MainWindow(QWidget):
         self.load_articles()
 
     # ================= UI =================
-
     def init_ui(self):
-
         main = QVBoxLayout()
         top = QHBoxLayout()
 
-        print(self.user)
         # --- Поиск ---
         self.search = QLineEdit()
         self.search.setPlaceholderText("Поиск...")
@@ -156,7 +159,6 @@ class MainWindow(QWidget):
 
         # --- Пользователь ---
         self.user_label = QLabel("Гость")
-        
         self.login_btn = QPushButton("Войти")
         self.login_btn.clicked.connect(self.open_login)
 
@@ -169,12 +171,10 @@ class MainWindow(QWidget):
         self.edit_btn.clicked.connect(self.edit_article)
         self.admin_btn.clicked.connect(self.open_admin_panel)
 
-        # Скрываем по умолчанию
         self.add_btn.hide()
         self.edit_btn.hide()
         self.admin_btn.hide()
 
-        # Добавляем в верхнюю панель
         top.addWidget(self.search)
         top.addWidget(self.user_label)
         top.addWidget(self.login_btn)
@@ -185,77 +185,54 @@ class MainWindow(QWidget):
         # --- Таблица статей ---
         self.table = QTableWidget()
         self.table.setColumnCount(3)
-        self.table.setHorizontalHeaderLabels(
-            ["ID", "Название", "Просмотры"]
-        )
+        self.table.setHorizontalHeaderLabels(["ID", "Название", "Просмотры"])
         self.table.setColumnHidden(0, True)
         self.table.cellDoubleClicked.connect(self.open_article)
 
         main.addLayout(top)
         main.addWidget(self.table)
-
         self.setLayout(main)
 
     # ================= ROLE LOGIC =================
-
     def update_ui_by_role(self):
-
         self.add_btn.hide()
         self.edit_btn.hide()
         self.admin_btn.hide()
-
         if not self.user:
             return
-
         roles = self.user.get("roles", [])
-
-        # ADMIN
         if "admin" in roles:
             self.add_btn.show()
             self.edit_btn.show()
             self.admin_btn.show()
             return
-
-        # EDITOR
         if "editor" in roles:
             self.add_btn.show()
             self.edit_btn.show()
 
     # ================= LOGIN =================
-
     def open_login(self):
         dialog = LoginWindow()
-
         if dialog.exec_():
             self.user = dialog.user
-
-            self.user_label.setText(
-                f"Пользователь: {self.user['name']}"
-            )
-
+            self.user_label.setText(f"Пользователь: {self.user['name']}")
             self.login_btn.setText("Выход")
             self.login_btn.clicked.disconnect()
             self.login_btn.clicked.connect(self.logout)
-
             self.update_ui_by_role()
 
     def logout(self):
         self.user = None
         self.user_label.setText("Гость")
-
         self.login_btn.setText("Войти")
         self.login_btn.clicked.disconnect()
         self.login_btn.clicked.connect(self.open_login)
-
         self.update_ui_by_role()
 
     # ================= ARTICLES =================
-
     def load_articles(self):
         articles = get_articles(self.search.text())
-
         self.table.setRowCount(len(articles))
-
         for row, (id_, title, views) in enumerate(articles):
             self.table.setItem(row, 0, QTableWidgetItem(str(id_)))
             self.table.setItem(row, 1, QTableWidgetItem(title))
@@ -264,49 +241,43 @@ class MainWindow(QWidget):
     def open_article(self, row, _):
         article_id = int(self.table.item(row, 0).text())
         article = get_article_by_id(article_id)
-
         if article:
             self.article_window = ArticleWindow(article)
             self.article_window.show()
 
     # ================= ACTIONS =================
-
     def add_article(self):
         if not self.user:
             QMessageBox.warning(self, "Ошибка", "Нет доступа")
             return
-
         roles = self.user.get("roles", [])
         if "admin" not in roles and "editor" not in roles:
             QMessageBox.warning(self, "Ошибка", "Нет прав")
             return
-
-        QMessageBox.information(self, "INFO", "Открыть окно добавления статьи")
+        from articleAddDialog import ArticleAddDialog
+        dialog = ArticleAddDialog(self)
+        if dialog.exec_():
+            self.load_articles()
 
     def edit_article(self):
         if not self.user:
             QMessageBox.warning(self, "Ошибка", "Нет доступа")
             return
-
         roles = self.user.get("roles", [])
         if "admin" not in roles and "editor" not in roles:
             QMessageBox.warning(self, "Ошибка", "Нет прав")
             return
-
         row = self.table.currentRow()
         if row < 0:
             QMessageBox.warning(self, "Ошибка", "Выберите статью")
             return
-
         article_id = int(self.table.item(row, 0).text())
         QMessageBox.information(self, "INFO", f"Редактирование статьи {article_id}")
 
     def open_admin_panel(self):
         if not self.user:
             return
-
         if "admin" not in self.user.get("roles", []):
             QMessageBox.warning(self, "Ошибка", "Нет прав администратора")
             return
-
         QMessageBox.information(self, "INFO", "Открыть админ панель")

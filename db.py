@@ -125,6 +125,25 @@ def get_article_by_id(article_id):
         "views": row[3]
     }
 
+# ================= ARTICLE IMAGES =================
+
+def get_article_images(article_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT i.description
+        FROM article_image ai
+        JOIN image i ON ai.id_image = i.id
+        WHERE ai.id_article = %s
+        ORDER BY ai.id
+    """, (article_id,))
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [row[0] for row in rows if row[0]]
+
 def get_article_by_title(title):
     conn = get_connection()
     cursor = conn.cursor()
