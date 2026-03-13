@@ -1,5 +1,6 @@
 import psycopg2
 from datetime import datetime
+import re
 
 DB_CONFIG = {
     "dbname": "wiki",
@@ -124,6 +125,40 @@ def get_article_by_id(article_id):
         "content": row[2],
         "views": row[3]
     }
+def get_all_article_titles():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("SELECT title FROM article WHERE status='published'")
+    titles = [row[0] for row in cur.fetchall()]
+
+    conn.close()
+    return titles
+
+def auto_link_articles(text, titles):
+    for title in sorted(titles, key=len, reverse=True):
+        pattern = r'\b' + re.escape(title) + r'\b'
+
+        text = re.sub(
+            pattern,
+            f'<a href="article:{title}">{title}</a>',
+            text
+        )
+
+    return text
+
+def increase_views(article_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE article
+        SET views = views + 1
+        WHERE id = %s
+    """, (article_id,))
+
+    conn.commit()
+    conn.close()
 
 # ================= ARTICLE IMAGES =================
 
