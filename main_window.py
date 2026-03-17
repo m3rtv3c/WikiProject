@@ -1,11 +1,13 @@
 import re
+from PyQt5.QtCore import pyqtSignal
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QTableWidget,
     QTableWidgetItem, QLineEdit,
     QLabel, QMessageBox, QTextBrowser,
-    QSizePolicy, QTreeWidget, QTreeWidgetItem
+    QSizePolicy, QTreeWidget, QTreeWidgetItem,
+    
 )
 
 from PyQt5.QtCore import Qt, QUrl
@@ -42,6 +44,7 @@ def auto_link_articles(text, titles):
 
 # ================= ARTICLE VIEW =================
 class ArticleWindow(QWidget):
+    article_viewed = pyqtSignal()
 
     def __init__(self, article):
         super().__init__()
@@ -58,7 +61,7 @@ class ArticleWindow(QWidget):
         main_layout = QVBoxLayout()
         nav_layout = QHBoxLayout()
 
-        self.back_btn = QPushButton("← Назад")
+        self.back_btn = QPushButton("<- Назад")
         self.back_btn.clicked.connect(self.go_back)
         self.back_btn.setEnabled(False)
 
@@ -109,7 +112,8 @@ class ArticleWindow(QWidget):
         article = get_article_by_title(title)
 
         if article:
-
+            increase_views(article["id"])
+            self.article_viewed.emit()
             # сохраняем текущую статью
             self.history.append(self.current_article)
 
@@ -148,9 +152,10 @@ class ArticleWindow(QWidget):
     # ---------------- LOAD ARTICLE ----------------
     def load_article(self, article):
 
-        increase_views(article["id"])
+        
    
-        images = get_article_images(article["id"])
+        article_id = article.get("article_id", article["id"])
+        images = get_article_images(article_id)
 
         if images:
             pixmap = QPixmap()
@@ -395,10 +400,11 @@ class MainWindow(QWidget):
         article = get_article_by_id(article_id)
 
         if article:
+            increase_views(article_id) 
+            self.load_articles()
 
-            increase_views(article_id)
-            self.table.item(row, 2).setText(str(article['views'] + 1))
             self.article_window = ArticleWindow(article)
+            self.article_window.article_viewed.connect(self.load_articles)
             self.article_window.show()
 
     # ================= ACTIONS =================
@@ -454,4 +460,8 @@ class MainWindow(QWidget):
             QMessageBox.warning(self, "Ошибка", "Нет прав администратора")
             return
 
-        QMessageBox.information(self, "INFO", "Открыть админ панель")
+        from adminPanel import AdminPanel
+
+        self.admin_window = AdminPanel()
+        self.admin_window.user_id = self.user["id"]
+        self.admin_window.show()

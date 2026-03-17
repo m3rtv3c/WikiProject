@@ -147,6 +147,33 @@ def auto_link_articles(text, titles):
 
     return text
 
+
+def get_all_articles(search=""):
+    """
+    Возвращает все статьи, независимо от статуса.
+    Для админки.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    if search:
+        cursor.execute("""
+            SELECT id, title, views, status
+            FROM article
+            WHERE title ILIKE %s
+            ORDER BY id DESC
+        """, (f"%{search}%",))
+    else:
+        cursor.execute("""
+            SELECT id, title, views, status
+            FROM article
+            ORDER BY id DESC
+        """)
+
+    data = cursor.fetchall()
+    conn.close()
+    return data
+
 def increase_views(article_id):
     conn = get_connection()
     cur = conn.cursor()
@@ -201,3 +228,190 @@ def get_article_by_title(title):
         "content": row[2],
         "views": row[3]
     }
+def get_users():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("SELECT id, name FROM users")
+    data = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return data
+
+
+def get_user_roles(user_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT r.name
+        FROM role r
+        JOIN user_role ur ON ur.id_role = r.id
+        WHERE ur.id_user = %s
+    """, (user_id,))
+
+    roles = [r[0] for r in cur.fetchall()]
+
+    cur.close()
+    conn.close()
+    return roles
+
+
+def set_user_role(user_id, role_name):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    # получаем id роли
+    cur.execute("SELECT id FROM role WHERE name = %s", (role_name,))
+    role_id = cur.fetchone()[0]
+
+    # очищаем роли
+    cur.execute("DELETE FROM user_role WHERE id_user = %s", (user_id,))
+
+    # добавляем новую
+    cur.execute("""
+        INSERT INTO user_role (id_user, id_role)
+        VALUES (%s, %s)
+    """, (user_id, role_id))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def get_full_history(article_id=None):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    if article_id:
+        cur.execute("""
+            SELECT 
+                h.id,
+                h.title,
+                h.updated_at,
+                h.status,
+                h.views,
+                u.name,
+                h.id_article
+            FROM article_history h
+            LEFT JOIN users u ON u.id = h.id_user
+            WHERE h.id_article = %s
+            ORDER BY h.updated_at DESC
+        """, (article_id,))
+    else:
+        cur.execute("""
+            SELECT 
+                h.id,
+                h.title,
+                h.updated_at,
+                h.status,
+                h.views,
+                u.name,
+                h.id_article
+            FROM article_history h
+            LEFT JOIN users u ON u.id = h.id_user
+            ORDER BY h.updated_at DESC
+            LIMIT 200
+        """)
+
+    data = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return data
+
+def get_history_by_id(history_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT title, content, id_article
+        FROM article_history
+        WHERE id = %s
+    """, (history_id,))
+
+    row = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    if not row:
+        return None
+
+    return {
+        "title": row[0],
+        "content": row[1],
+        "id": history_id,
+        "article_id": row[2]
+    }
+
+def rollback_article(history_id, user_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    # 1. берём версию из истории
+    cur.execute("""
+        SELECT id_article, title, content
+        FROM article_history
+        WHERE id = %s
+    """, (history_id,))
+
+    row = cur.fetchone()
+
+    if not row:
+        conn.close()
+        return
+
+    article_id, title, content = row
+
+    # 2. обновляем текущую статью
+    cur.execute("""
+        UPDATE article
+        SET title = %s,
+            content = %s
+        WHERE id = %s
+    """, (title, content, article_id))
+
+    # 3. записываем это как новую версию (ВАЖНО)
+    cur.execute("""
+        INSERT INTO article_history
+        (title, content, updated_at, status, views, id_article, id_user)
+        SELECT
+            title,
+            content,
+            NOW(),
+            status,
+            views,
+            id,
+            %s
+        FROM article
+        WHERE id = %s
+    """, (user_id, article_id))
+
+    conn.commit()
+    conn.close()
+
+def soft_delete_article(article_id, user_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    # Сохраняем текущую версию в истории с статусом "deleted"
+    cur.execute("""
+        INSERT INTO article_history
+        (title, content, updated_at, status, views, id_article, id_user)
+        SELECT title, content, NOW(), 'deleted', views, id, %s
+        FROM article
+        WHERE id = %s
+    """, (user_id, article_id))
+
+    # Меняем статус статьи
+    cur.execute("""
+        UPDATE article
+        SET status = 'deleted'
+        WHERE id = %s
+    """, (article_id,))
+
+    conn.commit()
+    cur.close()
+    conn.close()
