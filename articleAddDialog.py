@@ -111,6 +111,9 @@ class ArticleAddDialog(QDialog):
         btn_layout = QHBoxLayout()
 
         self.save_btn = QPushButton("Добавить статью")
+        
+
+      
         self.save_btn.clicked.connect(self.save_article)
 
         self.cancel_btn = QPushButton("Закрыть")
@@ -151,6 +154,33 @@ class ArticleAddDialog(QDialog):
                 item.setIcon(QIcon(pixmap))
 
                 self.image_list.addItem(item)
+
+
+    def submit_for_review(self):
+        title = self.title_edit.text().strip()
+        content = self.content_edit.toPlainText().strip()
+
+        if not title or not content:
+            QMessageBox.warning(self, "Ошибка", "Заполни статью")
+            return
+
+        try:
+            conn = get_connection()
+            cur = conn.cursor()
+
+            cur.execute("""
+                INSERT INTO article(title, content, status, views)
+                VALUES (%s, %s, 'pending', 0)
+            """, (title, content))
+
+            conn.commit()
+            conn.close()
+
+            QMessageBox.information(self, "OK", "Отправлено на модерацию")
+            self.accept()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", str(e))
 
     # ================= PREVIEW =================
     def update_preview(self):
@@ -267,7 +297,7 @@ class ArticleAddDialog(QDialog):
 
             cur.execute("""
                 INSERT INTO article(title, content, status, views)
-                VALUES (%s, %s, 'published', 0)
+                VALUES (%s, %s, 'draft', 0)
                 RETURNING id
             """, (title, content))
 

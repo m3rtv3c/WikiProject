@@ -196,50 +196,64 @@ class ArticleEditDialog(QDialog):
             QMessageBox.warning(self, "Ошибка", "Неизвестный пользователь")
             return
 
+        conn = None
+
         try:
             conn = get_connection()
             cur = conn.cursor()
 
-            # ---------------- Перед обновлением устанавливаем user_id для триггера ----------------
+            # Передаём user_id в триггер (если используется)
             cur.execute("SET LOCAL myapp.current_user_id = %s", (self.user_id,))
 
-            # ---------------- Обновляем статью ----------------
+            # ================= СОЗДАЁМ НОВУЮ ВЕРСИЮ =================
             cur.execute("""
-                UPDATE article
-                SET title=%s, content=%s
-                WHERE id=%s
+                INSERT INTO article (title, content, status, parent_id)
+                VALUES (%s, %s, 'pending', %s)
+                RETURNING id
             """, (title, content, self.article_id))
 
-            # ---------------- Обновляем картинки ----------------
-            # Удаляем старые связи
-            cur.execute("DELETE FROM article_image WHERE id_article = %s", (self.article_id,))
+            new_article_id = cur.fetchone()[0]
 
-            # Добавляем новые картинки
+            # ================= КАРТИНКИ =================
             for i, img in enumerate(self.images, start=1):
                 if isinstance(img, str):  # путь к файлу
                     with open(img, "rb") as f:
                         img_bytes = f.read()
-                else:  # уже загруженные данные
+                else:  # уже байты из БД
                     img_bytes = img
 
+            # сохраняем картинку
                 cur.execute("""
-                    INSERT INTO image(image_name, description)
+                    INSERT INTO image (image_name, description)
                     VALUES (%s, %s)
                     RETURNING id
                 """, (f"image_{i}", img_bytes))
 
                 img_id = cur.fetchone()[0]
-                cur.execute("INSERT INTO article_image(id_article, id_image) VALUES (%s, %s)",
-                            (self.article_id, img_id))
+
+                # связываем с новой статьёй
+                cur.execute("""
+                    INSERT INTO article_image (id_article, id_image)
+                    VALUES (%s, %s)
+                """, (new_article_id, img_id))
 
             conn.commit()
             conn.close()
 
-            QMessageBox.information(self, "Успешно", "Статья обновлена")
+            QMessageBox.information(
+                self,
+                "Успешно",
+                "Изменения отправлены на модерацию (создана новая версия)"
+            )
             self.accept()
 
         except Exception as e:
             if conn:
                 conn.rollback()
                 conn.close()
-            QMessageBox.critical(self, "Ошибка", f"Не удалось обновить статью:\n{e}")
+
+            QMessageBox.critical(
+                self,
+                "Ошибка",
+                f"Не удалось сохранить статью:\n{e}"
+            )

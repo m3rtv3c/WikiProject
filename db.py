@@ -415,3 +415,62 @@ def soft_delete_article(article_id, user_id):
     conn.commit()
     cur.close()
     conn.close()
+
+def update_article_status(article_id, status):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE article
+        SET status = %s
+        WHERE id = %s
+    """, (status, article_id))
+
+    conn.commit()
+    conn.close()
+
+def get_pending_articles():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, title, views, status
+        FROM article
+        WHERE status = 'pending'
+        ORDER BY id DESC
+    """)
+
+    data = cur.fetchall()
+    conn.close()
+    return data
+
+def approve_article_version(version_id, title, content):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    # Находим основную статью (parent_id = NULL)
+    cur.execute("SELECT parent_id FROM article WHERE id = %s", (version_id,))
+    parent_id = cur.fetchone()[0]
+
+    if parent_id is None:
+        # Если parent_id нет, это сама основная статья
+        parent_id = version_id
+
+    # Обновляем основную статью
+    cur.execute("""
+        UPDATE article
+        SET title = %s,
+            content = %s,
+            status = 'published'
+        WHERE id = %s
+    """, (title, content, parent_id))
+
+    # Меняем статус версии истории на approved
+    cur.execute("""
+        UPDATE article
+        SET status = 'approved'
+        WHERE id = %s
+    """, (version_id,))
+
+    conn.commit()
+    conn.close()

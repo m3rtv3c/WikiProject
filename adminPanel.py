@@ -65,8 +65,10 @@ class AdminPanel(QWidget):
         left.addWidget(QLabel("Статьи"))
 
         self.article_table = QTableWidget()
-        self.article_table.setColumnCount(3)
-        self.article_table.setHorizontalHeaderLabels(["ID", "Название", "Просмотры"])
+        self.article_table.setColumnCount(4)
+        self.article_table.setHorizontalHeaderLabels(
+        ["ID", "Название", "Просмотры", "Статус"]
+        )       
 
         self.article_table.cellClicked.connect(self.load_history)
 
@@ -96,6 +98,17 @@ class AdminPanel(QWidget):
 
         self.rollback_btn = QPushButton("Откатить версию")
         self.rollback_btn.clicked.connect(self.rollback_version)
+        self.approve_btn = QPushButton("Одобрить")
+        self.reject_btn = QPushButton("Отклонить")
+
+        self.approve_btn.clicked.connect(self.approve_article)
+        self.reject_btn.clicked.connect(self.reject_article)
+        self.moderation_btn = QPushButton("На модерации")
+        self.moderation_btn.clicked.connect(self.load_pending_articles)
+        left.addWidget(self.moderation_btn)
+
+        right.addWidget(self.approve_btn)
+        right.addWidget(self.reject_btn)
 
         right.addWidget(self.rollback_btn)
         self.setLayout(main_layout)
@@ -137,16 +150,29 @@ class AdminPanel(QWidget):
 
         articles = get_all_articles(self.search.text())
 
-        self.table.setRowCount(len(articles))
+        self.article_table.setRowCount(len(articles))
 
         for row, (id_, title, views, status) in enumerate(articles):
-            self.table.setItem(row, 0, QTableWidgetItem(str(id_)))
-            self.table.setItem(row, 1, QTableWidgetItem(title))
-            self.table.setItem(row, 2, QTableWidgetItem(str(views)))
 
-            if status == "deleted":
-                for col in range(3):
-                    self.table.item(row, col).setBackground(Qt.red)
+            self.article_table.setItem(row, 0, QTableWidgetItem(str(id_)))
+            self.article_table.setItem(row, 1, QTableWidgetItem(title))
+            self.article_table.setItem(row, 2, QTableWidgetItem(str(views)))
+            self.article_table.setItem(row, 3, QTableWidgetItem(status))
+
+            color = None
+
+            if status == "pending":
+                color = Qt.yellow
+            elif status == "draft":
+                color = Qt.lightGray
+            elif status == "rejected":
+                color = Qt.darkRed
+            elif status == "deleted":
+                color = Qt.red
+
+            if color:
+                for col in range(4):
+                    self.article_table.item(row, col).setBackground(color)
 
     # ================= HISTORY =================
     def load_history(self, row, col):
@@ -262,3 +288,51 @@ class AdminPanel(QWidget):
         # обновляем UI
         self.load_articles()
         self.history_table.setRowCount(0)
+
+    def approve_article(self):
+        row = self.article_table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Ошибка", "Выбери статью")
+            return
+
+        # Берём выбранную версию (редактируемую статью)
+        version_id = int(self.article_table.item(row, 0).text())
+        title = self.article_table.item(row, 1).text()
+        content = self.article_table.item(row, 2).text()
+
+        from db import approve_article_version
+        approve_article_version(version_id, title, content)
+
+        QMessageBox.information(self, "OK", "Статья обновлена и опубликована")
+        self.load_articles()
+
+    def reject_article(self):
+        row = self.article_table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Ошибка", "Выбери статью")
+            return
+
+        article_id = int(self.article_table.item(row, 0).text())
+
+        from db import update_article_status
+        update_article_status(article_id, "rejected")
+
+        QMessageBox.information(self, "OK", "Статья отклонена")
+        self.load_articles()
+
+    def load_pending_articles(self):
+        from db import get_pending_articles
+
+        articles = get_pending_articles()
+
+        self.article_table.setRowCount(len(articles))
+
+        for row, (id_, title, views, status) in enumerate(articles):
+            self.article_table.setItem(row, 0, QTableWidgetItem(str(id_)))
+            self.article_table.setItem(row, 1, QTableWidgetItem(title))
+            self.article_table.setItem(row, 2, QTableWidgetItem(str(views)))
+            self.article_table.setItem(row, 3, QTableWidgetItem(status))
+
+            # подсветка
+            for col in range(4):
+                self.article_table.item(row, col).setBackground(Qt.yellow)
