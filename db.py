@@ -350,22 +350,15 @@ def rollback_article(history_id, user_id):
     conn = get_connection()
     cur = conn.cursor()
 
-    # 1. берём версию из истории
+    # 1. получить версию
     cur.execute("""
-        SELECT id_article, title, content
+        SELECT article_id, title, content
         FROM article_history
         WHERE id = %s
     """, (history_id,))
+    article_id, title, content = cur.fetchone()
 
-    row = cur.fetchone()
-
-    if not row:
-        conn.close()
-        return
-
-    article_id, title, content = row
-
-    # 2. обновляем текущую статью
+    # 2. обновить статью
     cur.execute("""
         UPDATE article
         SET title = %s,
@@ -373,21 +366,19 @@ def rollback_article(history_id, user_id):
         WHERE id = %s
     """, (title, content, article_id))
 
-    # 3. записываем это как новую версию (ВАЖНО)
+    # 3. заменить картинки
+    cur.execute("DELETE FROM article_image WHERE id_article = %s", (article_id,))
+
     cur.execute("""
-        INSERT INTO article_history
-        (title, content, updated_at, status, views, id_article, id_user)
-        SELECT
-            title,
-            content,
-            NOW(),
-            status,
-            views,
-            id,
-            %s
-        FROM article
-        WHERE id = %s
-    """, (user_id, article_id))
+        SELECT id_image FROM article_image
+        WHERE id_history = %s
+    """, (history_id,))
+
+    for (img_id,) in cur.fetchall():
+        cur.execute("""
+            INSERT INTO article_image (id_article, id_image)
+            VALUES (%s, %s)
+        """, (article_id, img_id))
 
     conn.commit()
     conn.close()
@@ -444,33 +435,62 @@ def get_pending_articles():
     conn.close()
     return data
 
-def approve_article_version(version_id, title, content):
+def approve_article_version(history_id, user_id):
     conn = get_connection()
     cur = conn.cursor()
 
-    # Находим основную статью (parent_id = NULL)
-    cur.execute("SELECT parent_id FROM article WHERE id = %s", (version_id,))
-    parent_id = cur.fetchone()[0]
+    # 1. берём версию
+    cur.execute("""
+        SELECT id_article, title, content
+        FROM article_history
+        WHERE id = %s
+    """, (history_id,))
+    row = cur.fetchone()
 
-    if parent_id is None:
-        # Если parent_id нет, это сама основная статья
-        parent_id = version_id
+    if not row:
+        conn.close()
+        return
 
-    # Обновляем основную статью
+    article_id, title, content = row
+
+    # 2. обновляем ОСНОВНУЮ статью
     cur.execute("""
         UPDATE article
         SET title = %s,
             content = %s,
             status = 'published'
         WHERE id = %s
-    """, (title, content, parent_id))
+    """, (title, content, article_id))
 
-    # Меняем статус версии истории на approved
+    # 3. помечаем версию как применённую
     cur.execute("""
-        UPDATE article
+        UPDATE article_history
         SET status = 'approved'
         WHERE id = %s
-    """, (version_id,))
+    """, (history_id,))
+
+    conn.commit()
+    conn.close()
+
+def approve_new_article(article_id, user_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    # Ставим статус published
+    cur.execute("""
+        UPDATE article
+        SET status = 'published'
+        WHERE id = %s
+    """, (article_id,))
+
+    # Создаём запись в истории сразу как опубликованную
+    cur.execute("""
+        INSERT INTO article_history
+        (title, content, updated_at, status, views, id_article, id_user)
+        SELECT title, content, NOW(), 'published', views, id, %s
+        FROM article
+        WHERE id = %s
+    """, (user_id, article_id))
 
     conn.commit()
     conn.close()

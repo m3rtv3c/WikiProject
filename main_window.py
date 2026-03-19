@@ -409,21 +409,24 @@ class MainWindow(QWidget):
 
     # ================= ACTIONS =================
     def add_article(self):
-
-        if not self.user:
+        # Проверка, что пользователь авторизован
+        if not self.user or "id" not in self.user:
             QMessageBox.warning(self, "Ошибка", "Нет доступа")
             return
 
+        # Проверка ролей
         roles = self.user.get("roles", [])
-
         if "admin" not in roles and "editor" not in roles:
             QMessageBox.warning(self, "Ошибка", "Нет прав")
             return
 
+        # Импорт диалога
         from articleAddDialog import ArticleAddDialog
 
-        dialog = ArticleAddDialog(self)
+        # Создаем диалог, передавая корректный user_id
+        dialog = ArticleAddDialog(user_id=self.user["id"], parent=self)
 
+        # Если пользователь добавил статью — обновляем список
         if dialog.exec_():
             self.load_articles()
 
@@ -462,6 +465,8 @@ class MainWindow(QWidget):
 
         from adminPanel import AdminPanel
 
+
         self.admin_window = AdminPanel()
-        self.admin_window.user_id = self.user["id"]
+        self.admin_window.destroyed.connect(self.load_articles)
+
         self.admin_window.show()

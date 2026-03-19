@@ -207,12 +207,12 @@ class ArticleEditDialog(QDialog):
 
             # ================= СОЗДАЁМ НОВУЮ ВЕРСИЮ =================
             cur.execute("""
-                INSERT INTO article (title, content, status, parent_id)
-                VALUES (%s, %s, 'pending', %s)
+                INSERT INTO article_history (id_article, title, content, status, id_user)
+                VALUES (%s, %s, %s, 'pending', %s)
                 RETURNING id
-            """, (title, content, self.article_id))
+            """, (self.article_id, title, content, self.user_id))
 
-            new_article_id = cur.fetchone()[0]
+            history_id = cur.fetchone()[0]
 
             # ================= КАРТИНКИ =================
             for i, img in enumerate(self.images, start=1):
@@ -233,9 +233,9 @@ class ArticleEditDialog(QDialog):
 
                 # связываем с новой статьёй
                 cur.execute("""
-                    INSERT INTO article_image (id_article, id_image)
+                    INSERT INTO article_image (id_history, id_image)
                     VALUES (%s, %s)
-                """, (new_article_id, img_id))
+                """, (history_id, img_id))
 
             conn.commit()
             conn.close()
