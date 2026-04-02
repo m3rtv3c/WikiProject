@@ -61,6 +61,8 @@ class AdminPanel(QWidget):
             ["ID", "Название", "Просмотры", "Статус"]
         )
         self.article_table.cellClicked.connect(self.load_history)
+        self.article_table.cellDoubleClicked.connect(self.open_article_preview)
+        
         left.addWidget(self.article_table)
 
         # кнопки статьи
@@ -200,6 +202,23 @@ class AdminPanel(QWidget):
         article = get_history_by_id(history_id)
 
         if not article:
+            return
+
+        from main_window import ArticleWindow
+        self.viewer = ArticleWindow(article)
+        self.viewer.show()
+
+    def open_article_preview(self, row, col):
+        if row < 0:
+            return
+
+        article_id = int(self.article_table.item(row, 0).text())
+
+        from db import get_article_by_id
+        article = get_article_by_id(article_id)
+
+        if not article:
+            QMessageBox.warning(self, "Ошибка", "Статья не найдена")
             return
 
         from main_window import ArticleWindow
@@ -359,4 +378,6 @@ def make_diff_html(old_text, new_text):
             html += f'<div>{line[2:]}</div>'
 
     return html
+
+
 

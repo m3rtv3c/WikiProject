@@ -108,9 +108,9 @@ def get_article_by_id(article_id):
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT id,title,content,views
+        SELECT id, title, content, views, status
         FROM article
-        WHERE id=%s AND status='published'
+        WHERE id=%s
     """, (article_id,))
 
     row = cursor.fetchone()
@@ -120,11 +120,12 @@ def get_article_by_id(article_id):
         return None
 
     return {
-        "id": row[0],
-        "title": row[1],
-        "content": row[2],
-        "views": row[3]
-    }
+    "id": row[0],
+    "title": row[1],
+    "content": row[2],
+    "views": row[3],
+    "status": row[4],
+}
 def get_all_article_titles():
     conn = get_connection()
     cur = conn.cursor()

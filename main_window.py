@@ -27,9 +27,13 @@ from articleEditDialog import ArticleEditDialog
 
 
 # ================= AUTO LINK =================
-def auto_link_articles(text, titles):
+def auto_link_articles(text, titles, current_title):
 
     for title in sorted(titles, key=len, reverse=True):
+
+        # ❗ пропускаем текущую статью
+        if title == current_title:
+            continue
 
         pattern = r'\b' + re.escape(title) + r'\b'
 
@@ -233,7 +237,7 @@ class ArticleWindow(QWidget):
                     html += "<ul>"
                     in_list = True
 
-                text = auto_link_articles(line[2:].strip(), self.all_titles)
+                text = auto_link_articles(line[2:].strip(), self.all_titles, article["title"])
 
                 html += f"<li>{text}</li>"
 
@@ -253,7 +257,7 @@ class ArticleWindow(QWidget):
                     html += "</ul>"
                     in_list = False
 
-                text = auto_link_articles(line, self.all_titles)
+                text = auto_link_articles(line, self.all_titles, article["title"])
 
                 html += f"<p>{text}</p>"
 
@@ -470,3 +474,8 @@ class MainWindow(QWidget):
         self.admin_window.destroyed.connect(self.load_articles)
 
         self.admin_window.show()
+    
+    def closeEvent(self,event):
+        self.article_viewed.emit()
+        super.closeEvent(event)
+        
