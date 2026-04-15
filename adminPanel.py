@@ -14,6 +14,7 @@ from db import (
     set_user_role,
     get_full_history,
     get_history_by_id
+    
 )
 
 
@@ -271,8 +272,8 @@ class AdminPanel(QWidget):
 
         history_id = int(self.history_table.item(row, 0).text())
 
-        from db import update_history_status
-        update_history_status(history_id, "rejected")
+        from db import update_article_status
+        update_article_status(history_id, "rejected")
 
         QMessageBox.information(self, "OK", "Версия отклонена")
 

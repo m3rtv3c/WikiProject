@@ -192,20 +192,37 @@ def increase_views(article_id):
 
 def get_article_images(article_id):
     conn = get_connection()
-    cursor = conn.cursor()
+    cur = conn.cursor()
 
-    cursor.execute("""
-        SELECT i.description
-        FROM article_image ai
-        JOIN image i ON ai.id_image = i.id
-        WHERE ai.id_article = %s
-        ORDER BY ai.id
+    # Получаем последнюю версию статьи
+    cur.execute("""
+        SELECT id
+        FROM article_history
+        WHERE id_article = %s
+        ORDER BY id DESC
+        LIMIT 1
     """, (article_id,))
 
-    rows = cursor.fetchall()
-    conn.close()
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return []
 
-    return [row[0] for row in rows if row[0]]
+    history_id = row[0]
+
+    # Получаем картинки этой версии
+    cur.execute("""
+        SELECT i.description
+        FROM image i
+        JOIN article_image ai ON ai.id_image = i.id
+        WHERE ai.id_history = %s
+        ORDER BY i.id
+    """, (history_id,))
+
+    images = [row[0] for row in cur.fetchall()]
+
+    conn.close()
+    return images
 
 def get_article_by_title(title):
     conn = get_connection()
@@ -353,7 +370,7 @@ def rollback_article(history_id, user_id):
 
     # 1. получить версию
     cur.execute("""
-        SELECT article_id, title, content
+        SELECT id_article, title, content
         FROM article_history
         WHERE id = %s
     """, (history_id,))

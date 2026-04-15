@@ -7,8 +7,12 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QPixmap, QIcon
 from PyQt5.QtCore import Qt
 
-from db import get_connection, get_article_by_id, get_article_images, get_all_article_titles
-
+from db import (
+    get_connection,
+    get_article_by_id,
+    get_article_images,
+    get_all_article_titles
+)
 
 # ================= AUTO LINK =================
 def auto_link_articles(text, titles):
@@ -26,7 +30,7 @@ class ArticleEditDialog(QDialog):
         self.resize(1000, 600)
 
         self.article_id = article_id
-        self.user_id = user_id  # id пользователя, который редактирует
+        self.user_id = user_id
         self.images = []
         self.all_titles = get_all_article_titles()
 
@@ -37,65 +41,67 @@ class ArticleEditDialog(QDialog):
         self.title_edit = QLineEdit()
         layout.addWidget(self.title_edit)
 
-        # ================= MARKDOWN HELP =================
-        layout.addWidget(QLabel(
-            "Текст статьи (Markdown поддерживает):\n"
-            "# Заголовок 1\n"
-            "## Заголовок 2\n"
-            "- Список\n"
-            "```код```"
-        ))
-
-        # ================= CONTENT AREA =================
-        content_layout = QHBoxLayout()
-
-        # ---------------- TEXT ----------------
+        # ================= CONTENT =================
+        layout.addWidget(QLabel("Текст статьи:"))
         self.content_edit = QTextEdit()
         self.content_edit.textChanged.connect(self.update_preview)
-        content_layout.addWidget(self.content_edit)
+        layout.addWidget(self.content_edit)
 
-        # ---------------- PREVIEW + TOC ----------------
-        right_layout = QVBoxLayout()
-        right_layout.addWidget(QLabel("Предпросмотр:"))
-
+        # ================= PREVIEW =================
+        layout.addWidget(QLabel("Предпросмотр:"))
         self.preview_browser = QTextBrowser()
-        self.preview_browser.setMinimumWidth(400)
-        right_layout.addWidget(self.preview_browser)
+        layout.addWidget(self.preview_browser)
 
-        right_layout.addWidget(QLabel("Оглавление:"))
+        # ================= TOC =================
+        layout.addWidget(QLabel("Оглавление:"))
         self.toc_tree = QTreeWidget()
         self.toc_tree.setHeaderLabel("Оглавление")
-        self.toc_tree.setMaximumWidth(250)
-        right_layout.addWidget(self.toc_tree)
-
-        content_layout.addLayout(right_layout)
-        layout.addLayout(content_layout)
+        layout.addWidget(self.toc_tree)
 
         # ================= IMAGES =================
         layout.addWidget(QLabel("Картинки статьи:"))
         img_layout = QHBoxLayout()
+
         self.image_list = QListWidget()
         img_layout.addWidget(self.image_list)
-        self.add_image_btn = QPushButton("Добавить картинку")
+
+        btns_layout = QVBoxLayout()
+
+        self.add_image_btn = QPushButton("Добавить")
         self.add_image_btn.clicked.connect(self.add_image)
-        img_layout.addWidget(self.add_image_btn)
+
+        self.remove_image_btn = QPushButton("Удалить")
+        self.remove_image_btn.clicked.connect(self.remove_image)
+
+        self.replace_image_btn = QPushButton("Заменить")
+        self.replace_image_btn.clicked.connect(self.replace_image)
+
+        btns_layout.addWidget(self.add_image_btn)
+        btns_layout.addWidget(self.remove_image_btn)
+        btns_layout.addWidget(self.replace_image_btn)
+
+        img_layout.addLayout(btns_layout)
         layout.addLayout(img_layout)
 
         # ================= BUTTONS =================
         btn_layout = QHBoxLayout()
-        self.save_btn = QPushButton("Сохранить изменения")
+
+        self.save_btn = QPushButton("Сохранить")
         self.save_btn.clicked.connect(self.save_article)
+
         self.cancel_btn = QPushButton("Закрыть")
         self.cancel_btn.clicked.connect(self.reject)
+
         btn_layout.addWidget(self.save_btn)
         btn_layout.addWidget(self.cancel_btn)
+
         layout.addLayout(btn_layout)
 
         self.setLayout(layout)
 
-        # ================= LOAD ARTICLE =================
         self.load_article()
 
+    # ================= LOAD =================
     def load_article(self):
         article = get_article_by_id(self.article_id)
         if not article:
@@ -106,94 +112,116 @@ class ArticleEditDialog(QDialog):
         self.title_edit.setText(article["title"])
         self.content_edit.setPlainText(article["content"])
 
-        # Загружаем картинки
         images = get_article_images(self.article_id)
         for idx, img_bytes in enumerate(images):
             pixmap = QPixmap()
             pixmap.loadFromData(img_bytes)
+
             pixmap = pixmap.scaled(50, 50, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
             item = QListWidgetItem(f"image_{idx+1}")
             item.setIcon(QIcon(pixmap))
+
             self.image_list.addItem(item)
-            self.images.append(img_bytes)  # сохраняем img_bytes, чтобы не перезаписывать файлы
+            self.images.append(img_bytes)
 
         self.update_preview()
 
+    # ================= IMAGES =================
     def add_image(self):
-        files, _ = QFileDialog.getOpenFileNames(self, "Выберите картинки", "", "Images (*.png *.jpg *.jpeg *.bmp)")
-        for f in files:
-            if f not in self.images:
-                self.images.append(f)
-                pixmap = QPixmap(f).scaled(50, 50, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                item = QListWidgetItem(f.split("/")[-1])
-                item.setIcon(QIcon(pixmap))
-                self.image_list.addItem(item)
+        files, _ = QFileDialog.getOpenFileNames(
+            self, "Выберите картинки", "", "Images (*.png *.jpg *.jpeg *.bmp)"
+        )
 
+        for f in files:
+            with open(f, "rb") as file:
+                self.images.append(file.read())
+
+            pixmap = QPixmap(f).scaled(50, 50, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            item = QListWidgetItem(f.split("/")[-1])
+            item.setIcon(QIcon(pixmap))
+
+            self.image_list.addItem(item)
+
+    def remove_image(self):
+        row = self.image_list.currentRow()
+        if row >= 0:
+            self.image_list.takeItem(row)
+            self.images.pop(row)
+
+    def replace_image(self):
+        row = self.image_list.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Ошибка", "Выберите картинку")
+            return
+
+        file, _ = QFileDialog.getOpenFileName(
+            self, "Выберите картинку", "", "Images (*.png *.jpg *.jpeg *.bmp)"
+        )
+
+        if file:
+            self.images[row] = file
+
+            pixmap = QPixmap(file).scaled(50, 50, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
+            item = self.image_list.item(row)
+            item.setIcon(QIcon(pixmap))
+            item.setText(file.split("/")[-1])
+
+    # ================= PREVIEW =================
     def update_preview(self):
         self.preview_browser.clear()
         self.toc_tree.clear()
+
         lines = self.content_edit.toPlainText().splitlines()
+
         html = ""
         in_list = False
-        current_h1_item = None
+        current_h1 = None
+
         for line in lines:
             line = line.strip()
             if not line:
                 continue
-            # H1
-            if line.startswith("# ") and not line.startswith("##"):
-                if in_list:
-                    html += "</ul>"
-                    in_list = False
-                title = line[2:].strip()
-                html += f"<h1>{title}</h1>"
-                current_h1_item = QTreeWidgetItem([title])
-                self.toc_tree.addTopLevelItem(current_h1_item)
-            # H2
+
+            if line.startswith("# "):
+                html += f"<h1>{line[2:]}</h1>"
+                current_h1 = QTreeWidgetItem([line[2:]])
+                self.toc_tree.addTopLevelItem(current_h1)
+
             elif line.startswith("## "):
-                if in_list:
-                    html += "</ul>"
-                    in_list = False
-                title = line[3:].strip()
-                html += f"<h2>{title}</h2>"
-                if current_h1_item:
-                    child_item = QTreeWidgetItem([title])
-                    current_h1_item.addChild(child_item)
-                else:
-                    self.toc_tree.addTopLevelItem(QTreeWidgetItem([title]))
-            # LIST
+                html += f"<h2>{line[3:]}</h2>"
+                if current_h1:
+                    current_h1.addChild(QTreeWidgetItem([line[3:]]))
+
             elif line.startswith("- "):
                 if not in_list:
                     html += "<ul>"
                     in_list = True
-                text = auto_link_articles(line[2:].strip(), self.all_titles)
+
+                text = auto_link_articles(line[2:], self.all_titles)
                 html += f"<li>{text}</li>"
-            # CODE
-            elif line.startswith("```") and line.endswith("```"):
-                if in_list:
-                    html += "</ul>"
-                    in_list = False
-                html += f"<pre>{line[3:-3]}</pre>"
+
             else:
                 if in_list:
                     html += "</ul>"
                     in_list = False
+
                 text = auto_link_articles(line, self.all_titles)
                 html += f"<p>{text}</p>"
+
         if in_list:
             html += "</ul>"
+
         self.preview_browser.setHtml(html)
 
+    # ================= SAVE =================
     def save_article(self):
         title = self.title_edit.text().strip()
         content = self.content_edit.toPlainText().strip()
 
         if not title or not content:
-            QMessageBox.warning(self, "Ошибка", "Название и текст статьи обязательны")
-            return
-
-        if not hasattr(self, "user_id") or self.user_id is None:
-            QMessageBox.warning(self, "Ошибка", "Неизвестный пользователь")
+            QMessageBox.warning(self, "Ошибка", "Пустые поля")
             return
 
         conn = None
@@ -202,10 +230,8 @@ class ArticleEditDialog(QDialog):
             conn = get_connection()
             cur = conn.cursor()
 
-            # Передаём user_id в триггер (если используется)
             cur.execute("SET LOCAL myapp.current_user_id = %s", (self.user_id,))
 
-            # ================= СОЗДАЁМ НОВУЮ ВЕРСИЮ =================
             cur.execute("""
                 INSERT INTO article_history (id_article, title, content, status, id_user)
                 VALUES (%s, %s, %s, 'pending', %s)
@@ -214,15 +240,10 @@ class ArticleEditDialog(QDialog):
 
             history_id = cur.fetchone()[0]
 
-            # ================= КАРТИНКИ =================
+            # ================= IMAGES =================
             for i, img in enumerate(self.images, start=1):
-                if isinstance(img, str):  # путь к файлу
-                    with open(img, "rb") as f:
-                        img_bytes = f.read()
-                else:  # уже байты из БД
-                    img_bytes = img
+                img_bytes = img
 
-            # сохраняем картинку
                 cur.execute("""
                     INSERT INTO image (image_name, description)
                     VALUES (%s, %s)
@@ -231,7 +252,6 @@ class ArticleEditDialog(QDialog):
 
                 img_id = cur.fetchone()[0]
 
-                # связываем с новой статьёй
                 cur.execute("""
                     INSERT INTO article_image (id_history, id_image)
                     VALUES (%s, %s)
@@ -240,11 +260,7 @@ class ArticleEditDialog(QDialog):
             conn.commit()
             conn.close()
 
-            QMessageBox.information(
-                self,
-                "Успешно",
-                "Изменения отправлены на модерацию (создана новая версия)"
-            )
+            QMessageBox.information(self, "Успех", "Отправлено на модерацию")
             self.accept()
 
         except Exception as e:
@@ -252,8 +268,4 @@ class ArticleEditDialog(QDialog):
                 conn.rollback()
                 conn.close()
 
-            QMessageBox.critical(
-                self,
-                "Ошибка",
-                f"Не удалось сохранить статью:\n{e}"
-            )
+            QMessageBox.critical(self, "Ошибка", str(e))
