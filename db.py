@@ -512,3 +512,17 @@ def approve_new_article(article_id, user_id):
 
     conn.commit()
     conn.close()
+
+def has_new_history(article_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT 1
+        FROM article_history
+        WHERE id_article = %s
+          AND status = 'pending'
+        LIMIT 1
+    """, (article_id,))
+
+    return cur.fetchone() is not None

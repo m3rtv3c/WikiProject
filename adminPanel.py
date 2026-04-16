@@ -13,8 +13,8 @@ from db import (
     get_user_roles,
     set_user_role,
     get_full_history,
-    get_history_by_id
-    
+    get_history_by_id,
+    has_new_history
 )
 
 
@@ -22,6 +22,7 @@ class AdminPanel(QWidget):
 
     def __init__(self):
         super().__init__()
+        self.selected_history_id = None
 
         self.setWindowTitle("Админ панель")
         self.resize(1100, 600)
@@ -166,9 +167,13 @@ class AdminPanel(QWidget):
 
             color = None
 
-            if status == "pending":
-                color = Qt.yellow
-            elif status == "draft":
+            article_id = int(id_)
+
+            if has_new_history(article_id):
+                color = Qt.yellow  # есть новые версии (НЕ применённые / есть изменения)
+            elif status == "published":
+                color = Qt.green
+            elif status == "pending":
                 color = Qt.lightGray
             elif status == "rejected":
                 color = Qt.darkRed
@@ -183,12 +188,13 @@ class AdminPanel(QWidget):
     def load_history(self, row, col):
         article_id = int(self.article_table.item(row, 0).text())
         data = get_full_history(article_id)
+        selected_id = getattr(self, "selected_history_id", None)
 
         self.history_table.setRowCount(len(data))
 
         for row_i, (hid, title, date, status, views, user, article_id) in enumerate(data):
             item = QTableWidgetItem(str(hid))
-            item.setData(Qt.UserRole, article_id)  # 🔥 сохраняем скрыто
+            item.setData(Qt.UserRole, article_id)
             self.history_table.setItem(row_i, 0, item)
 
             self.history_table.setItem(row_i, 1, QTableWidgetItem(title))
@@ -197,16 +203,50 @@ class AdminPanel(QWidget):
             self.history_table.setItem(row_i, 4, QTableWidgetItem(str(views)))
             self.history_table.setItem(row_i, 5, QTableWidgetItem(user or "—"))
 
+            color = None
+            if selected_id == hid:
+                color = Qt.yellow
+
+            if color:
+                for col in range(6):
+                    self.history_table.item(row_i, col).setBackground(color)
+
     # ================= OPEN VERSION =================
     def open_version(self, row, col):
         history_id = int(self.history_table.item(row, 0).text())
-        article = get_history_by_id(history_id)
 
-        if not article:
+        # версия из истории
+        history_article = get_history_by_id(history_id)
+        self.selected_history_id = history_id
+        if not history_article:
             return
 
-        from main_window import ArticleWindow
-        self.viewer = ArticleWindow(article)
+        # достаём article_id (мы его сохранили через Qt.UserRole)
+        item = self.history_table.item(row, 0)
+        article_id = item.data(Qt.UserRole)
+
+        from db import get_article_by_id
+
+        # текущая версия статьи
+        current_article = get_article_by_id(article_id)
+        if not current_article:
+            return
+
+        # ⚠️ ВАЖНО: проверь названия полей!
+        old_text = current_article.get("content", "")
+        new_text = history_article.get("content", "")
+
+        # делаем diff
+        diff_html = make_diff_html(old_text, new_text)
+
+        # показываем HTML
+        from PyQt5.QtWidgets import QTextEdit
+
+        self.viewer = QTextEdit()
+        self.viewer.setWindowTitle("Сравнение версий")
+        self.viewer.setReadOnly(True)
+        self.viewer.setHtml(diff_html)
+        self.viewer.resize(1000, 700)
         self.viewer.show()
 
     def open_article_preview(self, row, col):
@@ -361,24 +401,103 @@ class AdminPanel(QWidget):
 
 # ================= DIFF =================
 def make_diff_html(old_text, new_text):
+    import difflib
+    import html
+
     old_lines = old_text.splitlines()
     new_lines = new_text.splitlines()
 
-    diff = difflib.ndiff(old_lines, new_lines)
+    matcher = difflib.SequenceMatcher(None, old_lines, new_lines)
+    opcodes = matcher.get_opcodes()
 
-    html = ""
+    result = []
 
-    for line in diff:
-        if line.startswith("- "):
-            html += f'<div style="background:#ffdddd;">{line[2:]}</div>'
-        elif line.startswith("+ "):
-            html += f'<div style="background:#ddffdd;">{line[2:]}</div>'
-        elif line.startswith("? "):
+    style = """
+    <style>
+        body { font-family: Consolas, monospace; background: #fff; }
+        table { width: 100%; border-collapse: collapse; }
+        td { vertical-align: top; white-space: pre; padding: 2px 8px; }
+        .left { width: 50%; border-right: 1px solid #ddd; }
+        .right { width: 50%; }
+        .add { background: #e6ffed; color: #1a7f37; }
+        .del { background: #ffeef0; color: #cf222e; }
+        .same { background: #ffffff; }
+        .empty { background: #f6f8fa; }
+    </style>
+    """
+
+    result.append(style)
+
+    result.append("""
+    <div style="padding:5px; font-size:12px;">
+        <span style="background:#e6ffed; padding:2px 6px;">Добавлено</span>
+        <span style="background:#ffeef0; padding:2px 6px; margin-left:10px;">Удалено</span>
+    </div>
+    """)
+
+    result.append("<table>")
+
+    for tag, i1, i2, j1, j2 in opcodes:
+
+        left_chunk = old_lines[i1:i2]
+        right_chunk = new_lines[j1:j2]
+
+        # 🔥 ВАЖНО: если replace и одинаковая длина → сравниваем построчно
+        if tag == "replace" and len(left_chunk) == len(right_chunk):
+            for l, r in zip(left_chunk, right_chunk):
+                similarity = difflib.SequenceMatcher(None, l, r).ratio()
+
+                if similarity > 0.6:
+                    # считаем это "изменённой строкой"
+                    result.append(f"""
+                    <tr>
+                        <td class="left del">{html.escape(l)}</td>
+                        <td class="right add">{html.escape(r)}</td>
+                    </tr>
+                    """)
+                else:
+                    # совсем разные
+                    result.append(f"""
+                    <tr>
+                        <td class="left del">{html.escape(l)}</td>
+                        <td class="right empty"></td>
+                    </tr>
+                    """)
+                    result.append(f"""
+                    <tr>
+                        <td class="left empty"></td>
+                        <td class="right add">{html.escape(r)}</td>
+                    </tr>
+                    """)
             continue
-        else:
-            html += f'<div>{line[2:]}</div>'
 
-    return html
+        max_len = max(len(left_chunk), len(right_chunk))
 
+        for i in range(max_len):
+            left = html.escape(left_chunk[i]) if i < len(left_chunk) else ""
+            right = html.escape(right_chunk[i]) if i < len(right_chunk) else ""
+
+            if tag == "equal":
+                l_class = r_class = "same"
+            elif tag == "delete":
+                l_class = "del"
+                r_class = "empty"
+            elif tag == "insert":
+                l_class = "empty"
+                r_class = "add"
+            else:
+                l_class = "del"
+                r_class = "add"
+
+            result.append(f"""
+            <tr>
+                <td class="left {l_class}">{left}</td>
+                <td class="right {r_class}">{right}</td>
+            </tr>
+            """)
+
+    result.append("</table>")
+
+    return "".join(result)
 
 
