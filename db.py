@@ -3,7 +3,7 @@ from datetime import datetime
 import re
 
 DB_CONFIG = {
-    "dbname": "wiki",
+    "dbname": "my_wiki",
     "user": "postgres",
     "password": "123",
     "host": "localhost",

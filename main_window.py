@@ -21,7 +21,6 @@ from db import (
     get_article_by_title,
     increase_views
 )
-
 from auth import LoginWindow
 from articleEditDialog import ArticleEditDialog
 
@@ -31,7 +30,7 @@ def auto_link_articles(text, titles, current_title):
 
     for title in sorted(titles, key=len, reverse=True):
 
-        # ❗ пропускаем текущую статью
+        
         if title == current_title:
             continue
 
@@ -471,7 +470,8 @@ class MainWindow(QWidget):
 
 
         self.admin_window = AdminPanel()
-        self.admin_window.destroyed.connect(self.load_articles)
+
+        self.admin_window.data_changed.connect(self.load_articles)  # 🔥 ВОТ ЭТО
 
         self.admin_window.show()
     

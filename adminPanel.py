@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (
     QPushButton, QMessageBox, QLabel,
     QLineEdit
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
 
 from db import (
     get_users,
@@ -19,9 +19,14 @@ from db import (
 
 
 class AdminPanel(QWidget):
-
-    def __init__(self):
+    data_changed = pyqtSignal()
+    def __init__(self, on_close=None):
         super().__init__()
+
+        self.on_close = on_close
+
+        from PyQt5.QtCore import Qt
+        self.setAttribute(Qt.WA_DeleteOnClose)  # 🔥 ВОТ ЭТО КЛЮЧ  
         self.selected_history_id = None
 
         self.setWindowTitle("Админ панель")
@@ -268,6 +273,7 @@ class AdminPanel(QWidget):
 
     # ================= APPROVE =================
     def approve_article(self):
+        self.data_changed.emit()
         row = self.history_table.currentRow()
 
         if row < 0:
@@ -398,7 +404,11 @@ class AdminPanel(QWidget):
             for col in range(4):
                 self.article_table.item(row, col).setBackground(Qt.yellow)
 
-
+def closeEvent(self, event):
+    print("ADMIN CLOSED")  # 👈 проверка
+    if self.on_close:
+        self.on_close()
+    super().closeEvent(event)
 # ================= DIFF =================
 def make_diff_html(old_text, new_text):
     import difflib
