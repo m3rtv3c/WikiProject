@@ -17,7 +17,7 @@ def get_connection():
 
 # ================= USERS =================
 
-def get_user_with_roles(login, password):
+def get_user_with_roles(login):
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -27,12 +27,13 @@ def get_user_with_roles(login, password):
             u.name,
             u.login,
             u.email,
+            u.password,  -- 🔐 Возвращаем хеш пароля
             r.name
         FROM users u
         LEFT JOIN user_role ur ON ur.id_user = u.id
         LEFT JOIN role r ON r.id = ur.id_role
-        WHERE u.login=%s AND u.password=%s
-    """, (login, password))
+        WHERE u.login=%s
+    """, (login,))
 
     rows = cursor.fetchall()
     conn.close()
@@ -45,12 +46,11 @@ def get_user_with_roles(login, password):
         "name": rows[0][1],
         "login": rows[0][2],
         "email": rows[0][3],
+        "password_hash": rows[0][4],  # 🔐 Хеш для проверки в auth.py
         "roles": []
     }
 
-    # собираем роли
-    user["roles"] = list({row[4] for row in rows if row[4]})
-
+    user["roles"] = list({row[5] for row in rows if row[5]})
     return user
 
 

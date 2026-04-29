@@ -1,6 +1,8 @@
 import psycopg2
 from psycopg2 import sql
 from datetime import datetime
+import hashlib  # 🔐 для хеширования
+import os       # 🔐 для генерации соли
 
 DB_NAME = "my_wiki"
 DB_USER = "postgres"
@@ -9,9 +11,22 @@ DB_HOST = "localhost"
 DB_PORT = "5432"
 
 
+# ================= ХЕШИРОВАНИЕ (та же логика, что в auth.py) =================
+def hash_password(password: str) -> str:
+    """Создаёт хеш с уникальной солью и 100k итераций PBKDF2"""
+    salt = os.urandom(16).hex()
+    pwd_hash = hashlib.pbkdf2_hmac(
+        'sha256', 
+        password.encode('utf-8'), 
+        salt.encode('utf-8'), 
+        100_000
+    )
+    return f"{salt}${pwd_hash.hex()}"
+
+
 def create_database():
     conn = psycopg2.connect(
-        dbname="postgres",  # подключаемся к системной БД
+        dbname="postgres",
         user=DB_USER,
         password=DB_PASSWORD,
         host=DB_HOST,
@@ -20,7 +35,6 @@ def create_database():
     conn.autocommit = True
     cur = conn.cursor()
 
-    # проверяем существование базы
     cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (DB_NAME,))
     exists = cur.fetchone()
 
@@ -32,6 +46,7 @@ def create_database():
 
     cur.close()
     conn.close()
+
 
 def create_tables():
     conn = psycopg2.connect(
@@ -47,7 +62,7 @@ def create_tables():
     CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         login TEXT,
-        password TEXT,
+        password TEXT,  -- 🔐 теперь здесь хранится хеш формата salt$hash
         reg_date TIMESTAMP,
         email TEXT,
         name TEXT
@@ -55,7 +70,7 @@ def create_tables():
 
     CREATE TABLE IF NOT EXISTS role (
         id SERIAL PRIMARY KEY,
-        name TEXT,
+        name TEXT UNIQUE,
         description TEXT
     );
 
@@ -90,7 +105,7 @@ def create_tables():
     CREATE TABLE IF NOT EXISTS image (
         id SERIAL PRIMARY KEY,
         image_name TEXT,
-        description TEXT
+        description Bytea
     );
 
     CREATE TABLE IF NOT EXISTS article_image (
@@ -105,9 +120,11 @@ def create_tables():
     cur.close()
     conn.close()
 
+
 def init_db():
     create_database()
     create_tables()
+
 
 def create_default_admin():
     conn = psycopg2.connect(
@@ -150,14 +167,17 @@ def create_default_admin():
 
     role_id = role_id[0]
 
-    # 🔹 создаём пользователя
+    # 🔐 Хешируем пароль админа перед записью в БД
+    admin_password_hash = hash_password("admin")
+
+    # 🔹 создаём пользователя с хешем вместо "admin"
     cur.execute("""
         INSERT INTO users (login, password, reg_date, email, name)
         VALUES (%s, %s, %s, %s, %s)
         RETURNING id
     """, (
         "admin",
-        "admin", 
+        admin_password_hash,  # 🔐 теперь здесь хеш
         datetime.now(),
         "admin@mail.com",
         "Администратор"
@@ -175,4 +195,11 @@ def create_default_admin():
     cur.close()
     conn.close()
 
-    print("Админ создан: login=admin, password=admin")
+    print("✅ Админ создан: login=admin, password=admin")
+    print("⚠️ Пароль сохранён как хеш. Вход через форму авторизации.")
+
+
+# Запуск при прямом вызове
+if __name__ == "__main__":
+    init_db()
+    create_default_admin()
